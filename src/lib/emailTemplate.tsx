@@ -108,7 +108,7 @@ export function html({ token, host }: { token: string; host: string }): string {
                         R
                       </div>
                       <p style="margin: 14px 0 0; font-size: 16px; font-weight: 600; color: ${colors.dark};">
-                        RDP Datacenter</p>
+                        Fazri Stream</p>
                       <p style="margin: 0px 0 0; font-size: 12px; font-weight: 600; color: ${colors.dark};"> 
                         ${escapedHost}
                       </p>
@@ -186,7 +186,7 @@ export function html({ token, host }: { token: string; host: string }): string {
                   <tr>
                     <td style="padding: 24px 30px; text-align: center;">
                       <p style="margin: 0 0 16px; font-size: 13px; line-height: 20px; color: #333333; text-align: center; font-weight: 500;">
-                        © ${currentYear} RDP Datacenter. All rights reserved.
+                        © ${currentYear} Fazri Stream. All rights reserved.
                       </p>
                       <p style="margin: 0; font-size: 12px; line-height: 18px; color: #666666;">
                         This is an automated message. Please do not reply.
@@ -215,13 +215,13 @@ export function getSubscriptionEmailTemplate({ email, unsubscribeUrl }: EmailPro
       <Body style={styles.body}>
         <Container style={styles.container}>
           <Heading as="h2" style={styles.heading}>
-            Welcome to RDP Datacenter – The Future of Cloud Hosting
+            Welcome to Fazri Stream – The Future of Video Captioning
           </Heading>
 
           <Text style={styles.text}>Dear {email},</Text>
 
           <Text style={styles.text}>
-            Thank you for subscribing to <strong>RDP Datacenter</strong>! We’re thrilled to have you onboard as we gear
+            Thank you for subscribing to <strong>Fazri Stream</strong>! We’re thrilled to have you onboard as we gear
             up to launch a next-gen cloud hosting and deployment platform.
           </Text>
 
@@ -247,7 +247,7 @@ export function getSubscriptionEmailTemplate({ email, unsubscribeUrl }: EmailPro
             We appreciate your support and can&#39;t wait to build the future of cloud with you.
           </Text>
 
-          <Text style={styles.signature}>Best regards, <br />The RDP Datacenter Team</Text>
+          <Text style={styles.signature}>Best regards, <br />The Fazri Stream Team</Text>
 
           <Hr style={styles.hr} />
 
