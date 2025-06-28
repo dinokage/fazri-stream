@@ -62,6 +62,8 @@ model User {
   Account       Account[]
   applications  JobApplication?
   Session       Session[]
+
+  VideoFile VideoFile[]
   
   @@index([twoFactorEnabled])
 }
@@ -108,3 +110,52 @@ enum Role {
   MGMT
   ADMIN
 }
+
+enum VideoStatus {
+  UPLOADED
+  TRANSCODING
+  TRANSCRIBING
+  CAPTIONING
+  PROCESSING
+  FINISHED
+}
+
+model VideoFile {
+  id String @id @default(cuid())
+  name String
+  description String? @default("")
+  fileKey String @unique
+  userId String
+  isUploaded Boolean @default(false)
+  createdAt   DateTime   @default(now())
+  transcript Transcript?
+  subtitles Subtitles?
+  videotask VideoTask[]
+  user User @relation(fields:[userId], references:[id])
+}
+
+model VideoTask {
+  id String @id @default(cuid())
+  videoId String
+  status VideoStatus @default(UPLOADED)
+  videoFile VideoFile @relation(fields:[videoId], references:[id])
+}
+
+model Transcript {
+  id String @id @default(cuid())
+  videoId String @unique
+  fileKey String @unique
+  rawText String?
+  videoFile VideoFile @relation(fields:[videoId], references:[id])
+  createdAt   DateTime   @default(now())
+}
+
+model Subtitles {
+  id String @id @default(cuid())
+  videoId String @unique
+  fileKey String @unique
+  rawText String?
+  videoFile VideoFile @relation(fields:[videoId], references:[id])
+  createdAt   DateTime   @default(now())
+}
+
