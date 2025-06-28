@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
 import { useState, useRef } from 'react';
@@ -11,6 +12,11 @@ interface ProcessingStage {
   active: boolean;
 }
 
+interface CaptionFormat {
+  format: 'webvtt' | 'srt';
+  label: string;
+}
+
 export default function VideoUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -19,10 +25,17 @@ export default function VideoUpload() {
   const [stages, setStages] = useState<ProcessingStage[]>([]);
   const [overallProgress, setOverallProgress] = useState<number>(0);
   const [transcription, setTranscription] = useState<string>('');
+  const [captions, setCaptions] = useState<{ webvtt: string | null; srt: string | null }>({ webvtt: null, srt: null });
   const [error, setError] = useState<string>('');
   const [processingStartTime, setProcessingStartTime] = useState<number>(0);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<string>('');
+  const [selectedCaptionFormat, setSelectedCaptionFormat] = useState<'webvtt' | 'srt'>('webvtt');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const captionFormats: CaptionFormat[] = [
+    { format: 'webvtt', label: 'WebVTT (.vtt)' },
+    { format: 'srt', label: 'SubRip (.srt)' }
+  ];
 
   // Calculate processing stages based on file size
   const calculateProcessingStages = (fileSize: number): ProcessingStage[] => {
@@ -32,7 +45,7 @@ export default function VideoUpload() {
       {
         name: 'Upload',
         description: 'Uploading video file...',
-        estimatedDuration: Math.max(5, fileSizeMB * 0.5), // 0.5 seconds per MB
+        estimatedDuration: Math.max(5, fileSizeMB * 0.5),
         completed: false,
         active: false
       },
@@ -51,16 +64,16 @@ export default function VideoUpload() {
         active: false
       },
       {
-        name: 'AI Transcription',
-        description: 'Converting speech to text with AI...',
-        estimatedDuration: Math.max(10, fileSizeMB * 0.8), // Main processing time
+        name: 'AI Processing',
+        description: 'Running transcription and caption generation...',
+        estimatedDuration: Math.max(15, fileSizeMB * 1.0), // Slightly longer for dual processing
         completed: false,
         active: false
       },
       {
         name: 'Formatting',
-        description: 'Formatting and finalizing transcript...',
-        estimatedDuration: 2,
+        description: 'Formatting transcripts and captions...',
+        estimatedDuration: 3,
         completed: false,
         active: false
       }
@@ -117,18 +130,20 @@ export default function VideoUpload() {
       setFile(selectedFile);
       setError('');
       setTranscription('');
+      setCaptions({ webvtt: null, srt: null });
       setStages(calculateProcessingStages(selectedFile.size));
       setOverallProgress(0);
       setCurrentStage(0);
     }
   };
 
-  const uploadAndTranscribe = async () => {
+  const uploadAndProcess = async () => {
     if (!file) return;
 
     setIsProcessing(true);
     setError('');
     setTranscription('');
+    setCaptions({ webvtt: null, srt: null });
     setProcessingStartTime(Date.now());
     
     // Initialize stages
@@ -136,92 +151,130 @@ export default function VideoUpload() {
     setStages(processingStages);
     
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const xhr = new XMLHttpRequest();
-
-      // Stage 1: Upload Progress
+      // Stage 1: Upload Progress (simulated for both requests)
       updateStageProgress(0);
       
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const percentage = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress({
-            loaded: event.loaded,
-            total: event.total,
-            percentage,
-          });
-          
-          if (percentage === 100) {
-            updateStageProgress(0, true); // Upload complete
-            updateStageProgress(1); // Start processing
-          }
-        }
-      });
+      // Create FormData for both requests
+      const transcriptionFormData = new FormData();
+      transcriptionFormData.append('file', file);
+      
+      const captionFormDataWebVTT = new FormData();
+      captionFormDataWebVTT.append('file', file);
+      captionFormDataWebVTT.append('format', 'webvtt');
+      
+      const captionFormDataSRT = new FormData();
+      captionFormDataSRT.append('file', file);
+      captionFormDataSRT.append('format', 'srt');
 
-      // Simulate processing stages with realistic timing
-      xhr.addEventListener('loadstart', () => {
-        updateStageProgress(0); // Start upload
-      });
+      // Simulate upload progress
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      updateStageProgress(0, true); // Upload complete
+      updateStageProgress(1); // Start processing
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      updateStageProgress(1, true); // Processing complete
+      updateStageProgress(2); // Audio extraction
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      updateStageProgress(2, true); // Audio extraction complete
+      updateStageProgress(3); // AI Processing
+      
+      // Call both APIs simultaneously
+      const [transcriptionResponse, webvttResponse, srtResponse] = await Promise.allSettled([
+        fetch('/api/transcribe', {
+          method: 'POST',
+          body: transcriptionFormData,
+        }),
+        fetch('/api/captions', {
+          method: 'POST',
+          body: captionFormDataWebVTT,
+        }),
+        fetch('/api/captions', {
+          method: 'POST',
+          body: captionFormDataSRT,
+        })
+      ]);
 
-      xhr.addEventListener('load', async () => {
-        if (xhr.status === 200) {
-          // Stage 2-4: Simulate server-side processing
-          updateStageProgress(1, true); // Processing complete
-          updateStageProgress(2); // Audio extraction
-          
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          updateStageProgress(2, true); // Audio extraction complete
-          updateStageProgress(3); // AI Transcription
-          
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          updateStageProgress(3, true); // AI Transcription complete
-          updateStageProgress(4); // Formatting
-          
-          await new Promise(resolve => setTimeout(resolve, 500));
-          updateStageProgress(4, true); // All complete
-          
-          const response: TranscriptionResponse = JSON.parse(xhr.responseText);
-          if (response.success && response.result) {
-            setTranscription(response.result.text);
-            setOverallProgress(100);
-          } else {
-            setError(response.error || 'Transcription failed');
-          }
+      updateStageProgress(3, true); // AI Processing complete
+      updateStageProgress(4); // Formatting
+      
+      // Process transcription response
+      if (transcriptionResponse.status === 'fulfilled' && transcriptionResponse.value.ok) {
+        const transcriptionData: TranscriptionResponse = await transcriptionResponse.value.json();
+        if (transcriptionData.success && transcriptionData.result) {
+          setTranscription(transcriptionData.result.text);
         } else {
-          setError('Upload failed');
+          console.error('Transcription error:', transcriptionData.error);
         }
-        setIsProcessing(false);
-      });
+      } else {
+        console.error('Transcription request failed:', transcriptionResponse);
+      }
 
-      xhr.addEventListener('error', () => {
-        setError('Upload failed');
-        setIsProcessing(false);
-      });
+      // Process caption responses
+      const captionResults = { webvtt: "", srt: "" };
+      
+      if (webvttResponse.status === 'fulfilled' && webvttResponse.value.ok) {
+        const webvttText = await webvttResponse.value.text();
+        captionResults.webvtt = webvttText;
+      } else {
+        console.error('WebVTT caption request failed:', webvttResponse);
+      }
+      
+      if (srtResponse.status === 'fulfilled' && srtResponse.value.ok) {
+        const srtText = await srtResponse.value.text();
+        captionResults.srt = srtText;
+      } else {
+        console.error('SRT caption request failed:', srtResponse);
+      }
+      
+      setCaptions(captionResults);
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      updateStageProgress(4, true); // All complete
+      setOverallProgress(100);
 
-      // Update time remaining every second
-      const timeInterval = setInterval(() => {
-        if (!isProcessing) {
-          clearInterval(timeInterval);
-          return;
-        }
-        setEstimatedTimeRemaining(calculateTimeRemaining());
-      }, 1000);
-
-      xhr.open('POST', '/api/captions');
-      xhr.send(formData);
+      // Check if any processing failed
+      const hasTranscription = !!transcription || 
+        (transcriptionResponse.status === 'fulfilled' && transcriptionResponse.value.ok);
+      const hasCaptions = captionResults.webvtt || captionResults.srt;
+      
+      if (!hasTranscription && !hasCaptions) {
+        setError('Both transcription and caption generation failed');
+      } else if (!hasTranscription) {
+        setError('Transcription failed, but captions were generated successfully');
+      } else if (!hasCaptions) {
+        setError('Caption generation failed, but transcription was successful');
+      }
 
     } catch (err) {
-        console.log(err)
-      setError('An error occurred during upload');
+      console.error('Processing error:', err);
+      setError('An error occurred during processing');
+    } finally {
       setIsProcessing(false);
     }
+  };
+
+  const downloadCaption = (format: 'webvtt' | 'srt') => {
+    const captionText = captions[format];
+    if (!captionText) return;
+    
+    const blob = new Blob([captionText], { 
+      type: format === 'webvtt' ? 'text/vtt' : 'application/x-subrip' 
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `captions.${format === 'webvtt' ? 'vtt' : 'srt'}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const resetUpload = () => {
     setFile(null);
     setTranscription('');
+    setCaptions({ webvtt: null, srt: null });
     setError('');
     setUploadProgress({ loaded: 0, total: 0, percentage: 0 });
     setStages([]);
@@ -233,10 +286,21 @@ export default function VideoUpload() {
     }
   };
 
+  // Update time remaining every second
+  useState(() => {
+    const interval = setInterval(() => {
+      if (isProcessing) {
+        setEstimatedTimeRemaining(calculateTimeRemaining());
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  });
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-2xl font-bold mb-4">Video Transcription</h2>
+        <h2 className="text-2xl font-bold mb-4">Video Transcription & Caption Generation</h2>
         
         {/* File Upload */}
         <div className="mb-4">
@@ -247,7 +311,7 @@ export default function VideoUpload() {
             ref={fileInputRef}
             id="video-upload"
             type="file"
-            accept="video/*"
+            accept="video/*,audio/*"
             onChange={handleFileSelect}
             disabled={isProcessing}
             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
@@ -288,7 +352,6 @@ export default function VideoUpload() {
             <div className="space-y-3">
               {stages.map((stage, index) => (
                 <div key={index} className="flex items-center space-x-3">
-                  {/* Stage Icon */}
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
                     ${stage.completed 
                       ? 'bg-green-500 text-white' 
@@ -299,7 +362,6 @@ export default function VideoUpload() {
                     {stage.completed ? '✓' : stage.active ? '○' : index + 1}
                   </div>
                   
-                  {/* Stage Info */}
                   <div className="flex-1">
                     <div className={`text-sm font-medium
                       ${stage.completed 
@@ -313,7 +375,6 @@ export default function VideoUpload() {
                     <div className="text-xs text-gray-500">{stage.description}</div>
                   </div>
                   
-                  {/* Stage Progress Indicator */}
                   {stage.active && (
                     <div className="flex items-center space-x-2">
                       <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
@@ -325,33 +386,17 @@ export default function VideoUpload() {
           </div>
         )}
 
-        {/* Upload Progress (for Stage 1) */}
-        {isProcessing && currentStage === 0 && (
-          <div className="mb-4">
-            <div className="flex justify-between text-sm text-gray-600 mb-1">
-              <span>Uploading file...</span>
-              <span>{uploadProgress.percentage}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${uploadProgress.percentage}%` }}
-              ></div>
-            </div>
-          </div>
-        )}
-
         {/* Action Buttons */}
         <div className="flex space-x-4 mb-6">
           <button
-            onClick={uploadAndTranscribe}
+            onClick={uploadAndProcess}
             disabled={!file || isProcessing}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
           >
             {isProcessing && (
               <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
             )}
-            <span>{isProcessing ? 'Processing...' : 'Upload & Transcribe'}</span>
+            <span>{isProcessing ? 'Processing...' : 'Generate Transcription & Captions'}</span>
           </button>
           
           <button
@@ -370,22 +415,87 @@ export default function VideoUpload() {
           </div>
         )}
 
-        {/* Transcription Result */}
-        {transcription && (
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold mb-2">Transcription Result:</h3>
-            <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-gray-700 whitespace-pre-wrap">{transcription}</p>
+        {/* Results Section */}
+        <div className="space-y-6">
+          {/* Transcription Result */}
+          {transcription && (
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold mb-2">Transcription Result:</h3>
+              <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                <p className="text-gray-700 whitespace-pre-wrap">{transcription}</p>
+              </div>
+              
+              <button
+                onClick={() => navigator.clipboard.writeText(transcription)}
+                className="mt-2 px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+              >
+                Copy Transcription
+              </button>
             </div>
-            
-            <button
-              onClick={() => navigator.clipboard.writeText(transcription)}
-              className="mt-2 px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
-            >
-              Copy to Clipboard
-            </button>
-          </div>
-        )}
+          )}
+
+          {/* Caption Results */}
+          {(captions.webvtt || captions.srt) && (
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold mb-2">Caption Files:</h3>
+              
+              {/* Caption Format Selector */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Preview Format:
+                </label>
+                <select
+                  value={selectedCaptionFormat}
+                  onChange={(e) => setSelectedCaptionFormat(e.target.value as 'webvtt' | 'srt')}
+                  className="block w-48 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {captionFormats.map((format) => (
+                    <option key={format.format} value={format.format}>
+                      {format.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Caption Preview */}
+              {captions[selectedCaptionFormat] && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-md mb-3">
+                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono max-h-64 overflow-y-auto">
+                    {captions[selectedCaptionFormat]}
+                  </pre>
+                </div>
+              )}
+
+              {/* Download Buttons */}
+              <div className="flex space-x-2">
+                {captions.webvtt && (
+                  <button
+                    onClick={() => downloadCaption('webvtt')}
+                    className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+                  >
+                    Download WebVTT
+                  </button>
+                )}
+                {captions.srt && (
+                  <button
+                    onClick={() => downloadCaption('srt')}
+                    className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+                  >
+                    Download SRT
+                  </button>
+                )}
+                {captions[selectedCaptionFormat] && (
+                  <button
+                    onClick={() => navigator.clipboard.writeText(captions[selectedCaptionFormat]!)}
+                    className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+                  >
+                    Copy to Clipboard
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
