@@ -112,6 +112,7 @@ enum Role {
 }
 
 enum VideoStatus {
+  NOT_STARTED
   UPLOADED
   TRANSCODING
   TRANSCRIBING
@@ -129,7 +130,7 @@ model VideoFile {
   isUploaded Boolean @default(false)
   createdAt   DateTime   @default(now())
   transcript Transcript?
-  subtitles Subtitles?
+  subtitles Subtitles[]
   videotask VideoTask[]
   user User @relation(fields:[userId], references:[id])
 }
@@ -139,6 +140,7 @@ model VideoTask {
   videoId String
   status VideoStatus @default(UPLOADED)
   videoFile VideoFile @relation(fields:[videoId], references:[id])
+  createdAt   DateTime   @default(now())
 }
 
 model Transcript {
@@ -152,7 +154,7 @@ model Transcript {
 
 model Subtitles {
   id String @id @default(cuid())
-  videoId String @unique
+  videoId String 
   fileKey String @unique
   rawText String?
   videoFile VideoFile @relation(fields:[videoId], references:[id])
