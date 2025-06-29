@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 
-const s3Client = new S3Client({
+export const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'us-east-1',
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
