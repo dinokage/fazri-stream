@@ -73,9 +73,9 @@ export const OPTIONS: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60,
   },
-//   pages: {
-//     signIn: "/authflow",
-//   },
+  pages: {
+    signIn: "/auth",
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
