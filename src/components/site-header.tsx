@@ -1,6 +1,6 @@
-import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { ModeToggle } from "@/components/ui/mode-toggle"
 
 export function SiteHeader() {
   return (
@@ -13,6 +13,7 @@ export function SiteHeader() {
         />
         <h1 className="text-base font-medium">Dashboard</h1>
       </div>
-    </header>
+      <ModeToggle/>
+    </header> 
   )
 }
