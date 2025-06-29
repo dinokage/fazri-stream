@@ -44,27 +44,23 @@ model Session {
 }
 
 model User {
-  id            String          @id @default(uuid())
-  email         String          @unique
-  emailVerified DateTime?
-  name          String?
-  phoneNumber   String?
-  role          Role            @default(USER)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  image         String?
-  
-  // 2FA Fields
-  twoFactorEnabled Boolean @default(false)
+  id               String          @id @default(uuid())
+  email            String          @unique
+  emailVerified    DateTime?
+  name             String?
+  phoneNumber      String?
+  role             Role            @default(USER)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  image            String?
+  twoFactorEnabled Boolean         @default(false)
   twoFactorSecret  String?
-  backupCodes      String[] @default([])
-  
-  Account       Account[]
-  applications  JobApplication?
-  Session       Session[]
+  backupCodes      String[]        @default([])
+  Account          Account[]
+  applications     JobApplication?
+  Session          Session[]
+  VideoFile        VideoFile[]
 
-  VideoFile VideoFile[]
-  
   @@index([twoFactorEnabled])
 }
 
@@ -105,6 +101,48 @@ model VerificationToken {
   @@id([identifier, token])
 }
 
+model VideoFile {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?     @default("")
+  fileKey      String      @unique
+  userId       String
+  isUploaded   Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  thumbnailKey String?     @default("")
+  title        String?
+  subtitles    Subtitles[]
+  transcript   Transcript?
+  user         User        @relation(fields: [userId], references: [id])
+  videotask    VideoTask[]
+}
+
+model VideoTask {
+  id        String      @id @default(cuid())
+  videoId   String
+  status    VideoStatus @default(UPLOADED)
+  createdAt DateTime    @default(now())
+  videoFile VideoFile   @relation(fields: [videoId], references: [id])
+}
+
+model Transcript {
+  id        String    @id @default(cuid())
+  videoId   String    @unique
+  fileKey   String    @unique
+  rawText   String?
+  createdAt DateTime  @default(now())
+  videoFile VideoFile @relation(fields: [videoId], references: [id])
+}
+
+model Subtitles {
+  id        String    @id @default(cuid())
+  videoId   String
+  fileKey   String    @unique
+  rawText   String?
+  createdAt DateTime  @default(now())
+  videoFile VideoFile @relation(fields: [videoId], references: [id])
+}
+
 enum Role {
   USER
   MGMT
@@ -112,52 +150,11 @@ enum Role {
 }
 
 enum VideoStatus {
-  NOT_STARTED
   UPLOADED
   TRANSCODING
   TRANSCRIBING
   CAPTIONING
   PROCESSING
   FINISHED
+  NOT_STARTED
 }
-
-model VideoFile {
-  id String @id @default(cuid())
-  name String
-  description String? @default("")
-  fileKey String @unique
-  userId String
-  isUploaded Boolean @default(false)
-  createdAt   DateTime   @default(now())
-  transcript Transcript?
-  subtitles Subtitles[]
-  videotask VideoTask[]
-  user User @relation(fields:[userId], references:[id])
-}
-
-model VideoTask {
-  id String @id @default(cuid())
-  videoId String
-  status VideoStatus @default(UPLOADED)
-  videoFile VideoFile @relation(fields:[videoId], references:[id])
-  createdAt   DateTime   @default(now())
-}
-
-model Transcript {
-  id String @id @default(cuid())
-  videoId String @unique
-  fileKey String @unique
-  rawText String?
-  videoFile VideoFile @relation(fields:[videoId], references:[id])
-  createdAt   DateTime   @default(now())
-}
-
-model Subtitles {
-  id String @id @default(cuid())
-  videoId String 
-  fileKey String @unique
-  rawText String?
-  videoFile VideoFile @relation(fields:[videoId], references:[id])
-  createdAt   DateTime   @default(now())
-}
-
