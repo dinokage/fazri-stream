@@ -31,32 +31,6 @@ interface ProfileClientWrapperProps {
 const ProfileClientWrapper: React.FC<ProfileClientWrapperProps> = ({ user }) => {
   const { toast } = useToast();
 
-  const handleToggle2FA = async (enabled: boolean) => {
-    // The actual toggle logic is handled inside TwoFactorSettings component
-    // This is just for any additional side effects if needed
-    console.log("2FA toggled:", enabled);
-    // Optionally: refetch user data here
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleSetupComplete = async (secret: string, backupCodes: string[]) => {
-    toast({
-      title: "2FA Setup Complete",
-      description:
-        "Two-factor authentication has been successfully enabled for your account.",
-      variant: "default",
-    });
-    // Optionally: refetch user data here instead of reloading
-  };
-
-  const handleDisable2FA = async () => {
-    toast({
-      title: "2FA Disabled",
-      description: "Two-factor authentication has been disabled for your account.",
-      variant: "default",
-    });
-    // Optionally: refetch user data here instead of reloading
-  };
 
   return (
     <div className="relative flex flex-col items-center top-10 justify-center min-h-screen">
@@ -128,13 +102,6 @@ const ProfileClientWrapper: React.FC<ProfileClientWrapperProps> = ({ user }) => 
               <h3 className="text-lg font-medium">Security Settings</h3>
             </div>
 
-            {/* Two-Factor Authentication */}
-            <TwoFactorSettings
-              isEnabled={user?.twoFactorEnabled || false}
-              onToggle={handleToggle2FA}
-              onSetupComplete={handleSetupComplete}
-              onDisable={handleDisable2FA}
-            />
           </div>
 
           <Separator />

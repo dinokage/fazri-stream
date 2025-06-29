@@ -6,6 +6,7 @@ import { getServerSession } from 'next-auth/next';
 import { OPTIONS } from '@/auth.config';
 
 export async function POST(request: NextRequest) {
+  console.log(request);
   try {
     const session = await getServerSession(OPTIONS);
     if (!session) {
