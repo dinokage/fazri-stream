@@ -1,9 +1,5 @@
-import { IconTrendingDown, IconTrendingUp } from "@tabler/icons-react"
-
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardFooter,

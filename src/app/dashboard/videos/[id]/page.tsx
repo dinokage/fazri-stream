@@ -1,5 +1,4 @@
 import { getUserVideoById } from "@/app/actions"
-import { VideoPlayer } from "@/components/video-player"
 
 
 export default async function VideoPage({ params }: { params: { id: string } }) {
