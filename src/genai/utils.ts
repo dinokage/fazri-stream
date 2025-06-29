@@ -1,43 +1,47 @@
-import { GoogleGenAI, Modality } from "@google/genai";
-import * as fs from "node:fs"
-import * as path from "node:path"
+// src/genai/utils.ts - Updated version
+import { GoogleGenAI, SafetyFilterLevel } from "@google/genai";
 
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_KEY!
+});
 
-const ai = new GoogleGenAI({})
+interface Screenshot {
+  base64Data: string;
+  timestamp: number;
+  frameNumber: number;
+}
 
-const imagePath1 = path.join(process.cwd(), 'public', 'frame_1.png');
-const imagePath2 = path.join(process.cwd(), 'public', 'frame_2.png');
-const imagePath3 = path.join(process.cwd(), 'public', 'frame_3.png');
+interface ThumbnailGenerationResult {
+  titles: string[];
+  description: string;
+  thumbnail_concept: {
+    visual_layout: string;
+    text_overlay: string;
+    color_scheme: string;
+    key_elements: string[];
+    mobile_optimization: string;
+  };
+  thumbnail_ai_prompt: string;
+  generatedImages?: string[]; // Base64 encoded generated images
+}
 
-const frame1 = fs.readFileSync(imagePath1, "base64")
-const frame2 = fs.readFileSync(imagePath2, "base64")
-const frame3 = fs.readFileSync(imagePath3, "base64")
-
-
-
-const transcript = `Good morning, Jean. How's everybody feeling? Hey, chef Sid, have you seen my iron? Also, when you have a stick, would you ask chef Carmen what the fuck you do with my tables out front? Chef Sid, would you please tell Richard, that I thought I would set him up for success and arrange his tables in a more efficient pattern. Is that what you did? Yes. That's what I did. It was really funny. I, I walked in, you know, so strange. It looked like the person who had done it previously had never left the city of Chicago. We can leave the city Chicago out of it. Zero flow. No efficiency looked like shit, so I thought I'd give you a hand. Shif said, would you tell chef Carmen that I can give him a fucking hand if he wants to give me a fucking hand. I'll give you a fucking hand. I'll give you a fucking hand. I'll give you a fucking hand. I just might suggest that that the both of you stop because, because I don't like this at all. I said it's fine. Schiff Carmen uses power phrases because he's a baby replicant who's not self actualized, which is maybe why he repeatedly referred to me as a loser. Rishi, I apologize. No. No. No. It's all good. I don't need your apology. I know how you feel now. Also, I respect your honesty and bravery from inside a locked vault. You know what? Matter of fact, chef Sydney? I don't remember Richard apologizing for all the shit. He was literally screaming at me while I was like I love you. No. What? You know what? I'm keeping our shit separate from this shit like a goddamn g out there, that's my dojo. Shit gets rearranged without my approval or consent. It creates an environment of fear and fear does not exist in that dojo. Richard, I added more two tops because all those four tops were fucking nonsense. Okay. Before tops in the first doll. I lose the flowers. You Jesus Christ. That was a lot of fun times. Who's butt? I'm sorry. I can't keep apologizing, and you're screaming. Am I? Yeah. Yeah. You all. Oh, yeah. That's fucking Is it is it fucking rich? Is it fucking rich, Richard? You wanna get this fucking out of my face, Carmen? Shut the fuck up, please. Sorry, Sid. It's just textbook sublimation. Once you've seen it a thousand times. I actually don't know what the fuck to do right now. Oh my god. Am I finally having this true?`
-
-const contents = [
-    {
-        inlineData:{
-            mimeType:"image/png",
-            data:frame1,
+export async function generateThumbnailFromScreenshots(
+  screenshots: Screenshot[],
+  transcript: string
+): Promise<ThumbnailGenerationResult | null> {
+  try {
+    // Prepare content array with screenshots and transcript
+    const contents = [
+      // Add the screenshots as inline data
+      ...screenshots.map(screenshot => ({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: screenshot.base64Data,
         }
-    },
-    {
-        inlineData:{
-            mimeType:"image/png",
-            data:frame2,
-        }
-    },
-    {
-        inlineData:{
-            mimeType:"image/png",
-            data:frame3,
-        }
-    },
-    {
-        text:`
+      })),
+      // Add the prompt with transcript
+      {
+        text: `
 # Viral Video Content Analysis & Thumbnail Generation Prompt
 
 You are a world-class videographer, content strategist, and social media expert. You create viral, family-friendly content optimized for all major platforms (YouTube, Instagram, TikTok, Facebook). You understand audience psychology, platform algorithms, and visual storytelling.
@@ -53,7 +57,7 @@ Given a **video transcript** and **three key video frames**, perform a multi-mod
 
 ## INPUTS:
 - **Transcript:** ${transcript}
-- **Frames:** Uploaded along with the transcript
+- **Frames:** ${screenshots.length} video frames uploaded with timestamps: ${screenshots.map(s => `Frame ${s.frameNumber} at ${s.timestamp.toFixed(1)}s`).join(', ')}
 
 ---
 
@@ -144,61 +148,200 @@ Return your response as a **well-structured JSON object** with the following fie
   "thumbnail_ai_prompt": "Detailed AI image generation prompt with all specifications..."
 }
         `
-    }
-]
+      }
+    ];
 
 
-export async function generateThumbnail(){
-    const ai = new GoogleGenAI({apiKey:process.env.GEMINI_KEY})
+    console.log("Generating thumbnail analysis with Gemini...");
+    console.log("Contents prepared for Gemini:", JSON.stringify(contents, null, 2));
+    // Generate analysis with Gemini
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents:contents,
+      model: "gemini-2.0-flash-exp",
+      contents: contents,
     });
-    if(!response.candidates || response.candidates?.length === 0){
-        console.log("No image generated");
-        return
+
+    if (!response.candidates || response.candidates?.length === 0) {
+      console.error("No analysis generated");
+      return null;
     }
 
-    let data=null
-    for(const part of response.candidates[0].content!.parts!){
+    let analysisData: ThumbnailGenerationResult | null = null;
 
-        if(part.inlineData){
-            const imageData = part.inlineData.data;
-            if(!imageData){
-                console.log("No image data found");
-                return
-            }
-            const buffer = Buffer.from(imageData, "base64");
-            fs.writeFileSync("gemini-native-image.png", buffer);
-            console.log("Image saved as gemini-native-image.png");
-        }else if(part.text){
-            console.log(part.text);
-            const jsonData = part.text.replace("```json", "").replace("```", "");
-            data = JSON.parse(jsonData)
-        } 
+    // Parse the response
+    for (const part of response.candidates[0].content!.parts!) {
+      if (part.text) {
+        console.log("Raw Gemini response:", part.text);
+        try {
+          // Clean up the JSON response
+          const jsonData = part.text
+            .replace(/```json\s*/, "")
+            .replace(/```\s*$/, "")
+            .trim();
+          
+          analysisData = JSON.parse(jsonData) as ThumbnailGenerationResult;
+          console.log("Parsed analysis data successfully");
+        } catch (parseError) {
+          console.error("Failed to parse JSON response:", parseError);
+          console.log("Raw text that failed to parse:", part.text);
+          return null;
+        }
+      }
     }
 
-    const res = await ai.models.generateImages({
+    if (!analysisData) {
+      console.error("No valid analysis data found");
+      return null;
+    }
+
+    // Generate thumbnail images using Imagen (optional)
+    try {
+      console.log("Generating thumbnail images with Imagen...");
+      
+      const imageResponse = await ai.models.generateImages({
         model: "imagen-4.0-generate-preview-06-06",
-        prompt:data.thumbnail_ai_prompt,
-        config:{
-            numberOfImages: 4
+        prompt: analysisData.thumbnail_ai_prompt,
+        config: {
+          numberOfImages: 4,
+          aspectRatio: "16:9", // YouTube thumbnail ratio
+          safetyFilterLevel: SafetyFilterLevel.BLOCK_LOW_AND_ABOVE,
         }
-    })
+      });
 
-    if(!res.generatedImages){
-        console.log("No image generated");
-        return
-    }
-    let idx=1;
-    for(const generatedImage of res.generatedImages){
-        if(!generatedImage.image){
-            console.log("No image found");
-            return
+      if (imageResponse.generatedImages) {
+        const generatedImages: string[] = [];
+        
+        for (const generatedImage of imageResponse.generatedImages) {
+          if (generatedImage.image?.imageBytes) {
+            generatedImages.push(generatedImage.image.imageBytes);
+          }
         }
-        let imgBytes = generatedImage.image.imageBytes;
-        const buffer = Buffer.from(imgBytes!, "base64");
-        fs.writeFileSync(`imagen-${idx}.png`, buffer);
-        idx++;
+        
+        analysisData.generatedImages = generatedImages;
+        console.log(`Generated ${generatedImages.length} thumbnail images`);
+      }
+    } catch (imageError) {
+      console.error("Image generation failed (continuing without images):", imageError);
+      // Continue without images - analysis is still valuable
     }
+
+    return analysisData;
+
+  } catch (error) {
+    console.error("Error in generateThumbnailFromScreenshots:", error);
+    return null;
+  }
+}
+
+// Helper function to convert File to base64
+export async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        // Remove the data URL prefix (e.g., "data:image/png;base64,")
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      } else {
+        reject(new Error('Failed to convert file to base64'));
+      }
+    };
+    reader.onerror = () => reject(new Error('FileReader error'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Helper function to extract screenshots from video file
+export async function extractScreenshotsFromVideo(
+  videoFile: File,
+  count: number = 3
+): Promise<Screenshot[]> {
+    "use client"
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      reject(new Error('Could not get canvas context'));
+      return;
+    }
+
+    video.muted = true;
+    video.preload = 'metadata';
+
+    video.onloadedmetadata = async () => {
+      try {
+        // Generate random timestamps
+        const timestamps = generateRandomTimestamps(video.duration, count);
+        const screenshots: Screenshot[] = [];
+
+        // Extract screenshots at each timestamp
+        for (let i = 0; i < timestamps.length; i++) {
+          const timestamp = timestamps[i];
+
+          // Seek to timestamp
+          video.currentTime = timestamp;
+
+          // Wait for seek to complete
+          await new Promise<void>((seekResolve) => {
+            video.onseeked = () => seekResolve();
+          });
+
+          // Wait for frame to load
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          // Set canvas dimensions
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+
+          // Draw frame to canvas
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          // Convert to base64
+          const dataUrl = canvas.toDataURL('image/png', 0.9);
+          const base64Data = dataUrl.split(',')[1]; // Remove data URL prefix
+
+          screenshots.push({
+            base64Data,
+            timestamp,
+            frameNumber: i + 1
+          });
+        }
+
+        // Clean up
+        URL.revokeObjectURL(video.src);
+        resolve(screenshots);
+
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    video.onerror = () => {
+      reject(new Error('Failed to load video'));
+    };
+
+    // Set video source
+    const videoUrl = URL.createObjectURL(videoFile);
+    video.src = videoUrl;
+  });
+}
+
+function generateRandomTimestamps(duration: number, count: number): number[] {
+  const timestamps = [];
+  const minTime = 2; // Skip first 2 seconds
+  const maxTime = Math.max(duration - 2, minTime); // Skip last 2 seconds
+  
+  for (let i = 0; i < count; i++) {
+    const timestamp = Math.random() * (maxTime - minTime) + minTime;
+    timestamps.push(timestamp);
+  }
+  
+  return timestamps.sort((a, b) => a - b);
+}
+
+// Legacy function for backward compatibility (if needed)
+export async function generateThumbnail() {
+  console.warn("generateThumbnail() is deprecated. Use generateThumbnailFromScreenshots() instead.");
+  // Your existing implementation if you want to keep it
 }
