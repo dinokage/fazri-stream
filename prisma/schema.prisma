@@ -124,6 +124,8 @@ enum VideoStatus {
 model VideoFile {
   id String @id @default(cuid())
   name String
+  title String?
+  thumbnailKey String? @default("")
   description String? @default("")
   fileKey String @unique
   userId String
