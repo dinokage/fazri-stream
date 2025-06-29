@@ -1,5 +1,9 @@
 import { createClient } from '@deepgram/sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { createUploadURL } from '@/lib/utils';
+import { prisma } from '@/lib/prisma';
+import { OPTIONS } from '@/auth.config';
 
 // Initialize Deepgram client once (reuse connection)
 const deepgram = createClient(process.env.DEEPGRAM_API_KEY!, {
@@ -17,12 +21,20 @@ const deepgram = createClient(process.env.DEEPGRAM_API_KEY!, {
 const transcriptionCache = new Map<string, unknown>();
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession(OPTIONS);
+  if (!session) {
+    return NextResponse.json(
+      { success: false, error: 'Not authenticated' },
+      { status: 401 }
+    );
+  }
   const startTime = Date.now();
   
   try {
     // Optimize file parsing - use streaming instead of loading entire file
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const videoId = formData.get('videoId') as string;
     
     if (!file) {
       return NextResponse.json(
@@ -111,12 +123,98 @@ export async function POST(request: NextRequest) {
     }
 
     // Minimal result object for speed
+    console.log(session.user)
+    //create a file with transcription result
+    const fileName = `transcript/${session.user.id}/${videoId}/transcription.txt`;
+    const transcriptionFile = new File([transcript.transcript], fileName, {
+      type: 'text/plain',
+      lastModified: Date.now(),
+    });
+
+    // const response = await fetch(`${process.env.NEXTAUTH_URL}/api/upload`, { 
+    //   method: 'POST',
+    //   credentials: 'include',
+    //   body: JSON.stringify({
+    //     fileName: fileName,
+    //     fileType: transcriptionFile.type,
+    //     uploadType: 'transcript',
+    //     videoId: videoId, // Include videoId for association
+    //   }),
+    // });
+    // if (!response.ok) {
+    //   console.error('Failed to generate upload URL:', response.statusText);
+    //   return NextResponse.json(
+    //     { success: false, error: 'Failed to generate upload URL' },
+    //     { status: 500 }
+    //   );
+    // }
+    const uploadUrl = await createUploadURL(fileName, "text/plain");
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+      body: transcriptionFile,
+    });
+    if (!uploadResponse.ok) {
+      console.error('Failed to upload transcription file:', uploadResponse.statusText);
+      return NextResponse.json(
+        { success: false, error: 'Failed to upload transcription file' },
+        { status: 500 }
+      );
+    }
+
+    // Prepare transcription result object
+    await prisma.transcript.create({
+      data: {
+        videoId: videoId,
+        fileKey: fileName, // Store the file key for future reference
+        rawText: transcript.transcript, // Store raw text for future use
+      }
+    })
+
+    const videoTask = await prisma.videoTask.findFirst({
+      where:{
+        videoId:videoId,
+      }, orderBy: {
+        createdAt: 'desc',
+      }
+    })
+
+    if(!videoTask){
+      await prisma.videoTask.create({
+        data:{
+          videoId:videoId,
+          status:'TRANSCRIBING'
+        }
+      })
+    }else{
+      if(videoTask.status !== 'CAPTIONING'){
+        await prisma.videoTask.update({
+          where: {
+            id: videoTask.id,
+          },
+          data: {
+            status: 'TRANSCRIBING',
+          },
+        });
+      }else if(videoTask.status === 'CAPTIONING'){
+        await prisma.videoTask.update({
+          where: {
+            id: videoTask.id,
+          },
+          data: {
+            status: 'TRANSCODING',
+          },
+        });
+      }
+    }
     const transcriptionResult = {
       text: transcript.transcript,
       confidence: transcript.confidence || 0,
       language: result?.results?.channels?.[0]?.detected_language || 'en-US',
       processingTime: Date.now() - startTime,
-      wordCount: transcript.transcript.split(' ').length
+      wordCount: transcript.transcript.split(' ').length,
     };
 
     // Cache result for future requests (optional)

@@ -153,18 +153,49 @@ export default function VideoUpload() {
     try {
       // Stage 1: Upload Progress (simulated for both requests)
       updateStageProgress(0);
+      const response = await fetch("/api/upload", {
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json",
+            },
+            credentials:"include",
+            body:JSON.stringify({
+                fileName: file.name,
+                fileType: file.type,
+                uploadType: 'video'
+            })
+        })
+        const data = await response.json()
+        const uploadUrl = data.uploadUrl
+        const videoId = data.videoFileId
+      console.log(uploadUrl)
+      const upload2bucket = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        redirect: "follow"
+      }) 
+
+      console.log(upload2bucket.status == 200)
+
+      if (!upload2bucket.ok) {
+        console.log("Chud gaye Guru")
+      }
+
       
       // Create FormData for both requests
       const transcriptionFormData = new FormData();
       transcriptionFormData.append('file', file);
+      transcriptionFormData.append('videoId', videoId)
       
       const captionFormDataWebVTT = new FormData();
       captionFormDataWebVTT.append('file', file);
       captionFormDataWebVTT.append('format', 'webvtt');
+      captionFormDataWebVTT.append('videoId', videoId)
       
       const captionFormDataSRT = new FormData();
       captionFormDataSRT.append('file', file);
       captionFormDataSRT.append('format', 'srt');
+      captionFormDataSRT.append('videoId', videoId)
 
       // Simulate upload progress
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -183,14 +214,17 @@ export default function VideoUpload() {
       const [transcriptionResponse, webvttResponse, srtResponse] = await Promise.allSettled([
         fetch('/api/transcribe', {
           method: 'POST',
+          credentials:"include",
           body: transcriptionFormData,
         }),
         fetch('/api/captions', {
           method: 'POST',
+          credentials:"include",
           body: captionFormDataWebVTT,
         }),
         fetch('/api/captions', {
           method: 'POST',
+          credentials:"include",
           body: captionFormDataSRT,
         })
       ]);

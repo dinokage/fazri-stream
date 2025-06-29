@@ -1,17 +1,29 @@
 import { createClient } from '@deepgram/sdk';
 import { webvtt, srt } from '@deepgram/captions';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { createUploadURL } from '@/lib/utils';
+import { prisma } from '@/lib/prisma';
+import { OPTIONS } from '@/auth.config';
 
 const deepgram = createClient(process.env.DEEPGRAM_API_KEY!);
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession(OPTIONS)
+  if(!session) {
+    return NextResponse.json(
+      { success: false, error: 'Not authenticated' },
+      { status: 401 }
+    );
+  }
   const startTime = Date.now();
   
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const format = (formData.get('format') as string) || 'webvtt';
-    
+    const videoId = formData.get('videoId') as string;
+    console.log(videoId)
     if (!file) {
       return NextResponse.json(
         { success: false, error: 'No file provided' },
@@ -85,6 +97,105 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Caption generation completed in ${Date.now() - startTime}ms`);
+
+    //push to S3
+    // console.log(request.headers.keys())
+    // console.log(request.cookies.getAll())
+    // const response = await fetch(`${process.env.NEXTAUTH_URL}/api/upload`, { 
+    //   method: 'POST',
+    //   credentials: 'same-origin',
+    //   body: JSON.stringify({
+    //     fileName: file.name,
+    //     fileType: mimeType,
+    //     uploadType: 'subtitle',
+    //     videoId: videoId,
+    //   }),
+    // });
+    // if (!response.ok) {
+    //   console.error('Failed to get upload URL:', response.statusText);
+    //   return NextResponse.json(
+    //     { success: false, error: 'Failed to get upload URL' },
+    //     { status: 500 }
+    //   );
+    // }
+
+    const uploadUrl = await createUploadURL(`subtitles/${session.user.id}/${videoId}/${filename}`, mimeType);
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': mimeType,
+      },
+      body: captions,
+    })
+
+    if (!uploadResponse.ok) {
+      console.error('Failed to upload captions:', uploadResponse.statusText);
+      return NextResponse.json(
+        { success: false, error: 'Failed to upload captions' },
+        { status: 500 }
+      );
+    }
+
+    await prisma.subtitles.create({
+      data: {
+        videoId: videoId,
+        fileKey: `subtitles/${session.user.id}/${videoId}/${filename}`,
+        rawText: captions, // Store raw text for future use
+      }
+    })
+    const videoTask = await prisma.videoTask.findFirst({
+      where:{
+        videoId:videoId,
+      }, orderBy: {
+        createdAt: 'desc',
+      }
+    })
+
+    if(!videoTask){
+      await prisma.videoTask.create({
+        data:{
+          videoId:videoId,
+          status:'CAPTIONING'
+        }
+      })
+    }else{
+      if(videoTask.status !== 'TRANSCRIBING'){
+        await prisma.videoTask.update({
+          where: {
+            id: videoTask.id,
+          },
+          data: {
+            status: 'CAPTIONING',
+          },
+        });
+      }else if(videoTask.status === 'TRANSCRIBING'){
+        await prisma.videoTask.update({
+          where: {
+            id: videoTask.id,
+          },
+          data: {
+            status: 'TRANSCODING',
+          },
+        });
+      }
+    }
+
+    // const uploadUrl = await createUploadURL(`subtitles/${session.user.id}/${videoId}/${filename}`, mimeType);
+    // const uploadResponse = await fetch(uploadUrl, {
+    //   method: 'PUT',
+    //   headers: {
+    //     'Content-Type': mimeType,
+    //   },
+    //   body: captions,
+    // });
+
+    // if (!uploadResponse.ok) {
+    //   console.error('Failed to upload captions:', uploadResponse.statusText);
+    //   return NextResponse.json(
+    //     { success: false, error: 'Failed to upload captions' },
+    //     { status: 500 }
+    //   );
+    // }
 
     // Return captions as downloadable file
     return new Response(captions, {

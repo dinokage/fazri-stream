@@ -79,6 +79,7 @@ export const OPTIONS: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+
         token.id = user.id;
         token.email = user.email;
         token.emailVerified = user.emailVerified;
