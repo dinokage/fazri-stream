@@ -143,7 +143,7 @@ export function VideoPlayer({ video }: VideoPlayerProps) {
                         max={duration}
                         step={1}
                         className="w-full"
-                        onValueChange={(value:any) => {
+                        onValueChange={(value: number[]) => {
                           if (videoRef.current) {
                             videoRef.current.currentTime = value[0]
                             setCurrentTime(value[0])

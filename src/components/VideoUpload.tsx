@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
-
 import Image from 'next/image';
 import { useState, useRef, useEffect } from 'react';
 import { TranscriptionResponse } from '@/types/transcription';
@@ -210,25 +209,6 @@ export default function VideoUploadWithGenAI() {
     const completedStages = stageIndex + (isComplete ? 1 : 0);
     const progress = Math.round((completedStages / totalStages) * 100);
     setOverallProgress(progress);
-  };
-
-  const calculateTimeRemaining = () => {
-    if (!processingStartTime || stages.length === 0) return '';
-
-    const elapsed = (Date.now() - processingStartTime) / 1000;
-    const totalEstimatedTime = stages.reduce(
-      (sum, stage) => sum + stage.estimatedDuration,
-      0,
-    );
-    const remaining = Math.max(0, totalEstimatedTime - elapsed);
-
-    if (remaining < 60) {
-      return `${Math.round(remaining)}s remaining`;
-    } else {
-      const minutes = Math.floor(remaining / 60);
-      const seconds = Math.round(remaining % 60);
-      return `${minutes}m ${seconds}s remaining`;
-    }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -455,12 +435,31 @@ frameBlobs.forEach((screenshot, index) => {
 
   // Update time remaining every second
   useEffect(() => {
+    const calculateTimeRemaining = () => {
+      if (!processingStartTime || stages.length === 0) return '';
+  
+      const elapsed = (Date.now() - processingStartTime) / 1000;
+      const totalEstimatedTime = stages.reduce(
+        (sum, stage) => sum + stage.estimatedDuration,
+        0,
+      );
+      const remaining = Math.max(0, totalEstimatedTime - elapsed);
+  
+      if (remaining < 60) {
+        return `${Math.round(remaining)}s remaining`;
+      } else {
+        const minutes = Math.floor(remaining / 60);
+        const seconds = Math.round(remaining % 60);
+        return `${minutes}m ${seconds}s remaining`;
+      }
+    };
+  
     const interval = setInterval(() => {
       if (isProcessing) {
         setEstimatedTimeRemaining(calculateTimeRemaining());
       }
     }, 1000);
-
+  
     return () => clearInterval(interval);
   }, [isProcessing, processingStartTime, stages]);
 
