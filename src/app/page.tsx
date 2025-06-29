@@ -1,6 +1,15 @@
 import VideoUpload from '@/components/VideoUpload';
+import { getServerSession } from 'next-auth';
+import { OPTIONS } from "@/auth.config";
+import { redirect } from 'next/navigation';
 
-export default function Home() {
+const VideoPage = async () => {
+  const session = await getServerSession(OPTIONS);
+
+  if (!session || !session.user) {
+    redirect("/auth");
+  }
+
   return (
     <main className="min-h-screen bg-gray-100 py-8">
       <div className="container mx-auto">
@@ -12,3 +21,5 @@ export default function Home() {
     </main>
   );
 }
+
+export default VideoPage;
