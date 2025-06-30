@@ -1,8 +1,8 @@
 import { generateThumbnail } from "@/genai/utils";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 
-export async function GET(request: NextRequest) {
+export async function GET() {
 
     await generateThumbnail()  
     return NextResponse.json({ message: 'Hello, Next.js!' });

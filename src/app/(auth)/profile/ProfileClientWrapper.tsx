@@ -5,11 +5,9 @@ import BlurImage from "@/components/blur-image";
 import SignOutButton from "@/components/ui/SignoutButton"; 
 import GreetingMessage from "@/components/ui/GreetingMessage";
 import { Button } from "@/components/ui/button";
-import { TwoFactorSettings } from "../auth/TwoFactorSettings";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import { Shield, User, Settings } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface User {
   id: string;
@@ -29,9 +27,6 @@ interface ProfileClientWrapperProps {
 }
 
 const ProfileClientWrapper: React.FC<ProfileClientWrapperProps> = ({ user }) => {
-  const { toast } = useToast();
-
-
   return (
     <div className="relative flex flex-col items-center top-10 justify-center min-h-screen">
       {/* Gradient Background */}

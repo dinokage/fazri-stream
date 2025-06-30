@@ -1,8 +1,6 @@
 "use server";
 import { OPTIONS } from "@/auth.config";
 import { prisma } from "@/lib/prisma";
-import { s3Client } from "@/lib/utils";
-import { GetObjectCommand, S3 } from "@aws-sdk/client-s3";
 import { getServerSession } from "next-auth";
 
 export async function getUserVideos(){
