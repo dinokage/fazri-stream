@@ -162,7 +162,6 @@ export class YouTubeClient {
       const buffer = Buffer.from(thumbnailBase64, 'base64');
       
       // Create a readable stream from the buffer
-      
       const bufferStream = new Readable();
       bufferStream.push(buffer);
       bufferStream.push(null); // End the stream
@@ -182,7 +181,7 @@ export class YouTubeClient {
     }
   }
 
-  // Get channel info
+  // Get the authenticated user's channel information
   async getChannelInfo() {
     try {
       const response = await this.youtube.channels.list({
@@ -190,10 +189,114 @@ export class YouTubeClient {
         mine: true,
       });
 
-      return response.data.items?.[0];
+      if (!response.data.items || response.data.items.length === 0) {
+        return null;
+      }
+
+      const channel = response.data.items[0];
+      return {
+        id: channel.id,
+        snippet: {
+          title: channel.snippet?.title,
+          description: channel.snippet?.description,
+          thumbnails: channel.snippet?.thumbnails,
+        },
+        statistics: {
+          subscriberCount: channel.statistics?.subscriberCount,
+          videoCount: channel.statistics?.videoCount,
+          viewCount: channel.statistics?.viewCount,
+        }
+      };
     } catch (error) {
-      console.error('Get channel info error:', error);
+      console.error('Error fetching channel info:', error);
       throw error;
+    }
+  }
+
+  // Get specific channel information by ID
+  async getChannelById(channelId: string) {
+    try {
+      const response = await this.youtube.channels.list({
+        part: ['snippet', 'statistics'],
+        id: [channelId],
+      });
+
+      if (!response.data.items || response.data.items.length === 0) {
+        return null;
+      }
+
+      const channel = response.data.items[0];
+      return {
+        id: channel.id,
+        snippet: {
+          title: channel.snippet?.title,
+          description: channel.snippet?.description,
+          thumbnails: channel.snippet?.thumbnails,
+        },
+        statistics: {
+          subscriberCount: channel.statistics?.subscriberCount,
+          videoCount: channel.statistics?.videoCount,
+          viewCount: channel.statistics?.viewCount,
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching channel by ID:', error);
+      throw error;
+    }
+  }
+
+  // Get channel statistics
+  async getChannelStats(channelId: string) {
+    try {
+      const channelInfo = await this.getChannelById(channelId);
+      
+      if (!channelInfo || !channelInfo.statistics) {
+        return null;
+      }
+
+      return {
+        subscriberCount: channelInfo.statistics.subscriberCount || 'Hidden',
+        videoCount: channelInfo.statistics.videoCount || '0',
+        viewCount: channelInfo.statistics.viewCount || '0',
+      };
+    } catch (error) {
+      console.error('Error fetching channel stats:', error);
+      return null;
+    }
+  }
+
+  // Get my channel (shorthand for getChannelInfo)
+  async getMyChannel() {
+    try {
+      const channelInfo = await this.getChannelInfo();
+      
+      if (!channelInfo) {
+        return null;
+      }
+
+      return {
+        id: channelInfo.id,
+        title: channelInfo.snippet?.title || 'Unknown Channel',
+        description: channelInfo.snippet?.description || '',
+        thumbnail: channelInfo.snippet?.thumbnails?.default?.url,
+        subscriberCount: channelInfo.statistics?.subscriberCount,
+        videoCount: channelInfo.statistics?.videoCount,
+        viewCount: channelInfo.statistics?.viewCount,
+      };
+    } catch (error) {
+      console.error('Error fetching my channel:', error);
+      throw error;
+    }
+  }
+
+  // Check if the token is still valid
+  async validateToken() {
+    try {
+      const channelInfo = await this.getChannelInfo();
+      return !!channelInfo;
+    } catch (error) {
+      console.error('Token validation failed:', error);
+      return false;
     }
   }
 
@@ -209,6 +312,35 @@ export class YouTubeClient {
     } catch (error) {
       console.error('Get video details error:', error);
       throw error;
+    }
+  }
+
+  // Get upload history for the authenticated user
+  async getUploadHistory(maxResults: number = 50) {
+    try {
+      // First get the channel's uploads playlist
+      const channelResponse = await this.youtube.channels.list({
+        part: ['contentDetails'],
+        mine: true,
+      });
+
+      const uploadsPlaylistId = channelResponse.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+      
+      if (!uploadsPlaylistId) {
+        return [];
+      }
+
+      // Get videos from uploads playlist
+      const playlistResponse = await this.youtube.playlistItems.list({
+        part: ['snippet'],
+        playlistId: uploadsPlaylistId,
+        maxResults: maxResults,
+      });
+
+      return playlistResponse.data.items || [];
+    } catch (error) {
+      console.error('Error fetching upload history:', error);
+      return [];
     }
   }
 
@@ -289,6 +421,70 @@ export class YouTubeClient {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
       };
+    }
+  }
+
+  // Search for videos
+  async searchVideos(query: string, maxResults: number = 25) {
+    try {
+      const response = await this.youtube.search.list({
+        part: ['snippet'],
+        q: query,
+        type: ['video'],
+        maxResults: maxResults,
+      });
+
+      return response.data.items || [];
+    } catch (error) {
+      console.error('Error searching videos:', error);
+      return [];
+    }
+  }
+
+  // Get playlist items
+  async getPlaylistItems(playlistId: string, maxResults: number = 50) {
+    try {
+      const response = await this.youtube.playlistItems.list({
+        part: ['snippet'],
+        playlistId: playlistId,
+        maxResults: maxResults,
+      });
+
+      return response.data.items || [];
+    } catch (error) {
+      console.error('Error fetching playlist items:', error);
+      return [];
+    }
+  }
+
+  // Get user's playlists
+  async getMyPlaylists(maxResults: number = 25) {
+    try {
+      const response = await this.youtube.playlists.list({
+        part: ['snippet'],
+        mine: true,
+        maxResults: maxResults,
+      });
+
+      return response.data.items || [];
+    } catch (error) {
+      console.error('Error fetching playlists:', error);
+      return [];
+    }
+  }
+
+  // Get video categories
+  async getVideoCategories(regionCode: string = 'US') {
+    try {
+      const response = await this.youtube.videoCategories.list({
+        part: ['snippet'],
+        regionCode: regionCode,
+      });
+
+      return response.data.items || [];
+    } catch (error) {
+      console.error('Error fetching video categories:', error);
+      return [];
     }
   }
 }

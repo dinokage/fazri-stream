@@ -43,6 +43,11 @@ interface ThumbnailAnalysis {
   generatedImages?: string[];
 }
 
+interface YouTubeChannel {
+  channelTitle: string;
+  channelId: string;
+}
+
 /**
  * Extracts a specified number of random frames from a video file.
  */
@@ -140,6 +145,7 @@ export function VideoUploadWithGenAI() {
   const [selectedThumbnail, setSelectedThumbnail] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [youtubeConnected, setYoutubeConnected] = useState(false);
+  const [youtubeChannel, setYoutubeChannel] = useState<YouTubeChannel | null>(null);
   const [isYoutubeUploading, setIsYoutubeUploading] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -524,32 +530,32 @@ export function VideoUploadWithGenAI() {
 
   const connectYouTube = async () => {
     try {
-      const response = await fetch('/api/youtube/connect');
-      const data = await response.json();
-      
-      if (data.success) {
-        window.open(data.authUrl, 'youtube_auth', 'width=500,height=600');
-        
-        // Listen for the popup to close
-        const checkClosed = setInterval(() => {
-          setTimeout(() => {
-            checkYouTubeStatus();
-            clearInterval(checkClosed); // Use the variable here
-          }, 1000);
-        }, 5000); // Also changed to 5 seconds to be more reasonable        
-      }
+      // Direct redirect to the connect endpoint
+      window.location.href = '/api/youtube/connect';
     } catch (error) {
-      toast.error(`Failed to connect YouTube account ${error}`);
+      toast.error(`Failed to connect YouTube account: ${error}`);
     }
   };
 
   const checkYouTubeStatus = async () => {
     try {
-      const response = await fetch('/api/youtube/status');
+      const response = await fetch('/api/youtube/integration');
       const data = await response.json();
-      setYoutubeConnected(data.connected);
+      
+      if (data.success && data.integration && data.integration.isActive) {
+        setYoutubeConnected(true);
+        setYoutubeChannel({
+          channelTitle: data.integration.channelTitle,
+          channelId: data.integration.channelId,
+        });
+      } else {
+        setYoutubeConnected(false);
+        setYoutubeChannel(null);
+      }
     } catch (error) {
       console.error('Error checking YouTube status:', error);
+      setYoutubeConnected(false);
+      setYoutubeChannel(null);
     }
   };
 
@@ -586,7 +592,17 @@ export function VideoUploadWithGenAI() {
         }
       } else {
         const errorData = await response.json();
-        toast.error(errorData.error || "Failed to upload to YouTube");
+        
+        // Handle token expiration specifically
+        if (errorData.error?.includes('token expired') || 
+            errorData.error?.includes('not connected') || 
+            errorData.error?.includes('reconnect')) {
+          toast.error("YouTube token expired. Please reconnect your account.");
+          setYoutubeConnected(false);
+          setYoutubeChannel(null);
+        } else {
+          toast.error(errorData.error || "Failed to upload to YouTube");
+        }
       }
     } catch (error) {
       console.error('YouTube upload error:', error);
@@ -1041,36 +1057,59 @@ export function VideoUploadWithGenAI() {
                     📺 YouTube Publishing
                   </h4>
                   {youtubeConnected ? (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <span className="text-sm text-green-600">YouTube account connected</span>
+                    <div className="space-y-3">
+                      {youtubeChannel && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <span>Connected to: <strong>{youtubeChannel.channelTitle}</strong></span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-green-600">Ready to upload to YouTube</span>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={uploadToYouTube}
+                            disabled={isYoutubeUploading || !selectedTitle}
+                            className="flex items-center gap-2"
+                            variant="default"
+                          >
+                            {isYoutubeUploading && (
+                              <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                            )}
+                            {isYoutubeUploading ? 'Uploading to YouTube...' : 'Upload to YouTube'}
+                          </Button>
+                          <Button
+                            onClick={() => window.location.href = '/youtube/integration'}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Manage
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        onClick={uploadToYouTube}
-                        disabled={isYoutubeUploading || !selectedTitle}
-                        className="flex items-center gap-2"
-                        variant="default"
-                      >
-                        {isYoutubeUploading && (
-                          <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                        )}
-                        {isYoutubeUploading ? 'Uploading to YouTube...' : 'Upload to YouTube'}
-                      </Button>
                     </div>
                   ) : (
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Connect your YouTube account to upload directly</span>
-                      <Button
-                        onClick={connectYouTube}
-                        variant="outline"
-                        className="flex items-center gap-2"
-                      >
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                        </svg>
-                        Connect YouTube
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={connectYouTube}
+                          variant="outline"
+                          className="flex items-center gap-2"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                          </svg>
+                          Connect YouTube
+                        </Button>
+                        <Button
+                          onClick={() => window.location.href = '/youtube/integration'}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Manage Integration
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>

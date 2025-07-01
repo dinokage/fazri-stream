@@ -5,7 +5,8 @@ import {
   IconChartBar,
   IconDashboard,
   IconInnerShadowTop,
-  IconListDetails
+  IconListDetails,
+  IconBrandYoutube
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -42,6 +43,11 @@ const data = {
       title: "Profile",
       url: "/profile",
       icon: IconChartBar,
+    },
+    {
+      title: "Youtube Integration",
+      url: "/dashboard/youtube",
+      icon: IconBrandYoutube,
     },
   ],
 }

@@ -1,28 +1,34 @@
+// app/api/youtube/connect/route.ts
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { OPTIONS } from '@/auth.config';
-import { getYouTubeAuthUrl } from '@/lib/youtube-oauth';
 
 export async function GET() {
   try {
     const session = await getServerSession(OPTIONS);
     if (!session) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return NextResponse.redirect('/auth/signin');
     }
 
-    const authUrl = getYouTubeAuthUrl(session.user.id);
+    // Generate OAuth URL for YouTube
+    const clientId = process.env.GOOGLE_CLIENT_ID!;
+    const redirectUri = `${process.env.NEXTAUTH_URL}/api/youtube/callback`;
+    const scope = 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly';
     
-    return NextResponse.json({
-      success: true,
-      authUrl
-    });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${clientId}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `scope=${encodeURIComponent(scope)}&` +
+      `response_type=code&` +
+      `access_type=offline&` +
+      `prompt=consent&` +
+      `state=${session.user.id}`;
+
+    return NextResponse.redirect(authUrl);
   } catch (error) {
-    console.error('YouTube connect error:', error);
+    console.error('Error initiating YouTube OAuth:', error);
     return NextResponse.json(
-      { error: 'Failed to generate YouTube auth URL' },
+      { error: 'Failed to initiate YouTube connection' },
       { status: 500 }
     );
   }

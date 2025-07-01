@@ -158,6 +158,7 @@ model YouTubeIntegration {
   userId        String
   channelId     String   @unique
   channelTitle  String
+  channelThumbnail String? // Add this line
   accessToken   String   // Encrypted
   refreshToken  String   // Encrypted
   expiresAt     DateTime

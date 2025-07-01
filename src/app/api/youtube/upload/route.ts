@@ -8,14 +8,91 @@ import crypto from 'crypto';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY!;
 const ALGORITHM = 'aes-256-cbc';
 
+// Create a proper 32-byte key from the environment variable
+function createKey(key: string): Buffer {
+  if (key.length === 64) {
+    return Buffer.from(key, 'hex');
+  }
+  return crypto.createHash('sha256').update(key).digest();
+}
+
+function isValidHex(str: string): boolean {
+  return /^[0-9a-fA-F]+$/.test(str) && str.length % 2 === 0;
+}
+
 function decrypt(encryptedText: string): string {
-  const textParts = encryptedText.split(':');
-  textParts.shift(); // Remove the IV part without assigning it to a variable
-  const encryptedData = textParts.join(':');
-  const decipher = crypto.createDecipher(ALGORITHM, ENCRYPTION_KEY);
-  let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+  console.log('Attempting to decrypt token. Encrypted text length:', encryptedText.length);
+  console.log('Encrypted text format (first 50 chars):', encryptedText.substring(0, 50));
+  console.log('Number of colons in encrypted text:', (encryptedText.match(/:/g) || []).length);
+  
+  // Check if the encrypted text looks like the old format (no IV)
+  const parts = encryptedText.split(':');
+  
+  // If there's only one part or it doesn't look like hex:hex format, try legacy method first
+  if (parts.length === 1 || !isValidHex(parts[0])) {
+    console.log('Trying legacy decryption method first (no IV detected)');
+    try {
+      const decipher = crypto.createDecipher(ALGORITHM, ENCRYPTION_KEY);
+      let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      console.log('Legacy decryption successful');
+      return decrypted;
+    } catch (legacyError) {
+      console.log('Legacy decryption failed:', (legacyError as Error).message);
+    }
+  }
+  
+  // Try new method (with IV)
+  try {
+    console.log('Trying new decryption method (with IV)');
+    const textParts = encryptedText.split(':');
+    const ivHex = textParts.shift()!;
+    const encryptedDataHex = textParts.join(':');
+    
+    console.log('IV hex length:', ivHex.length);
+    console.log('Encrypted data hex length:', encryptedDataHex.length);
+    
+    // Validate hex strings
+    if (!isValidHex(ivHex) || !isValidHex(encryptedDataHex)) {
+      throw new Error('Invalid hex format in encrypted data');
+    }
+    
+    const iv = Buffer.from(ivHex, 'hex');
+    const encryptedData = Buffer.from(encryptedDataHex, 'hex');
+    const key = createKey(ENCRYPTION_KEY);
+    
+    console.log('IV buffer length:', iv.length);
+    console.log('Key buffer length:', key.length);
+    
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    let decrypted = decipher.update(encryptedData, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    console.log('New decryption successful');
+    return decrypted;
+  } catch (newError) {
+    console.log('New decryption failed:', (newError as Error).message);
+    
+    // Final fallback: try legacy method if we haven't already
+    if (parts.length > 1 && isValidHex(parts[0])) {
+      try {
+        console.log('Trying legacy decryption as final fallback');
+        const textParts = encryptedText.split(':');
+        textParts.shift(); // Remove what we thought was IV
+        const encryptedData = textParts.join(':');
+        
+        const decipher = crypto.createDecipher(ALGORITHM, ENCRYPTION_KEY);
+        let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        console.log('Legacy fallback decryption successful');
+        return decrypted;
+      } catch (finalError) {
+        console.log('Final fallback failed:', (finalError as Error).message);
+      }
+    }
+    
+    throw new Error(`All decryption methods failed. This token may have been encrypted with a different key or method.`);
+  }
 }
 
 export async function POST(request: NextRequest) {
