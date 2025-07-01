@@ -1,15 +1,18 @@
+// app/api/youtube/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { google } from 'googleapis';
+import { getServerSession } from 'next-auth/next';
+import { OPTIONS } from '@/auth.config';
 import { prisma } from '@/lib/prisma';
-import { YOUTUBE_OAUTH_CONFIG } from '@/lib/youtube-oauth';
+import { YouTubeClient } from '@/lib/youtube-oauth';
 import crypto from 'crypto';
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY!; // 32-byte key
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY!;
 const ALGORITHM = 'aes-256-cbc';
 
 function encrypt(text: string): string {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipher(ALGORITHM, ENCRYPTION_KEY);
+  const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   return iv.toString('hex') + ':' + encrypted;
@@ -19,90 +22,92 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
-    const state = searchParams.get('state'); // userId
+    const state = searchParams.get('state');
     const error = searchParams.get('error');
 
     if (error) {
       console.error('YouTube OAuth error:', error);
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?youtube_error=${error}`
-      );
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?error=oauth_error`);
     }
 
     if (!code || !state) {
-      console.error('Missing code or state parameters');
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?youtube_error=missing_params`
-      );
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?error=missing_params`);
     }
 
-    // Exchange code for tokens
-    const oauth2Client = new google.auth.OAuth2(
-      YOUTUBE_OAUTH_CONFIG.clientId,
-      YOUTUBE_OAUTH_CONFIG.clientSecret,
-      YOUTUBE_OAUTH_CONFIG.redirectUri
-    );
-
-    const { tokens } = await oauth2Client.getToken(code);
-    oauth2Client.setCredentials(tokens);
-
-    // Get YouTube channel info
-    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
-    const channelResponse = await youtube.channels.list({
-      part: ['snippet', 'statistics'],
-      mine: true,
-    });
-
-    const channel = channelResponse.data.items?.[0];
-    if (!channel) {
-      console.error('No YouTube channel found for user');
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?youtube_error=no_channel`
-      );
+    const session = await getServerSession(OPTIONS);
+    if (!session || session.user.id !== state) {
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?error=unauthorized`);
     }
 
-    // Store encrypted tokens in database
-    const expiresAt = new Date(Date.now() + (tokens.expiry_date || 3600000));
-    
     try {
-      await prisma.youTubeIntegration.upsert({
+      // Exchange code for tokens using Google APIs
+      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: process.env.GOOGLE_CLIENT_ID!,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+          code,
+          grant_type: 'authorization_code',
+          redirect_uri: `${process.env.NEXTAUTH_URL}/api/youtube/callback`,
+        }),
+      });
+
+      const tokenData = await tokenResponse.json();
+
+      if (!tokenResponse.ok) {
+        console.error('Token exchange failed:', tokenData);
+        return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?error=token_exchange_failed`);
+      }
+
+      const { access_token, refresh_token, expires_in } = tokenData;
+
+      // Get channel information
+      const youtubeClient = new YouTubeClient(access_token);
+      const channelInfo = await youtubeClient.getChannelInfo();
+
+      if (!channelInfo || !channelInfo.id) {
+        return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?error=no_channel_found`);
+      }
+
+      // Deactivate any existing integrations for this user
+      await prisma.youTubeIntegration.updateMany({
         where: {
-          channelId: channel.id!,
-        },
-        update: {
-          channelTitle: channel.snippet?.title || '',
-          accessToken: encrypt(tokens.access_token!),
-          refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : '',
-          expiresAt,
+          userId: session.user.id,
           isActive: true,
-          updatedAt: new Date(),
         },
-        create: {
-          userId: state,
-          channelId: channel.id!,
-          channelTitle: channel.snippet?.title || '',
-          accessToken: encrypt(tokens.access_token!),
-          refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : '',
+        data: {
+          isActive: false,
+        },
+      });
+
+      // Create new integration
+      const expiresAt = new Date(Date.now() + (expires_in * 1000));
+      const encryptedAccessToken = encrypt(access_token);
+      const encryptedRefreshToken = refresh_token ? encrypt(refresh_token) : '';
+
+      await prisma.youTubeIntegration.create({
+        data: {
+          userId: session.user.id,
+          channelId: channelInfo.id,
+          channelTitle: channelInfo.snippet?.title || 'Unknown Channel',
+          channelThumbnail: channelInfo.snippet?.thumbnails?.default?.url || null,
+          accessToken: encryptedAccessToken,
+          refreshToken: encryptedRefreshToken,
           expiresAt,
           isActive: true,
         },
       });
 
-      console.log('YouTube integration saved successfully for user:', state);
-      
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?youtube_success=true&channel=${encodeURIComponent(channel.snippet?.title || 'Unknown')}`
-      );
-    } catch (dbError) {
-      console.error('Database error saving YouTube integration:', dbError);
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?youtube_error=database_error`
-      );
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?success=connected`);
+    } catch (error) {
+      console.error('Error processing YouTube OAuth callback:', error);
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?error=processing_failed`);
     }
   } catch (error) {
-    console.error('YouTube callback error:', error);
-    return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/dashboard?youtube_error=callback_failed`
-    );
+    console.error('Error in YouTube OAuth callback:', error);
+    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/youtube/integration?error=server_error`);
   }
 }
