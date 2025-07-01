@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -244,8 +245,9 @@ export default function YouTubeIntegrationPage() {
             <div className="space-y-4">
               <div className="flex items-start gap-4 p-4 border rounded-lg">
                 {integration.channelThumbnail && (
-                  <img
+                  <Image
                     src={integration.channelThumbnail}
+                    fill
                     alt={integration.channelTitle}
                     className="w-16 h-16 rounded-full"
                   />
